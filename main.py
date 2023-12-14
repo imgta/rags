@@ -50,14 +50,25 @@ def save_upload_file(upload_file) -> Path:
 # TEXT CLEANING AND SPLITTING PREPROCESS
 from haystack.nodes import PreProcessor
 @st.cache_resource
-def load_preprocessor() -> PreProcessor:
+def load_preprocessor(doc_length) -> PreProcessor:
+    # Dynamic splits/overlaps based on document length
+    if doc_length < 1000:
+        char_split = 0
+        overlap = 0
+    elif doc_length < 5000:
+        char_split = 1000
+        overlap = 20
+    else:
+        char_split = 750
+        overlap = 15
+
     preprocessor = PreProcessor(
         clean_empty_lines=True,
         clean_whitespace=True,
         clean_header_footer=False,
         split_by="sentence",
-        split_length=100,
-        split_overlap=5,
+        split_length=char_split,
+        split_overlap=overlap,
         split_respect_sentence_boundary=False,
     )
     return preprocessor
@@ -81,14 +92,19 @@ def convert_to_text(type: str, file_path: Path, vectorstore: QdrantDocumentStore
         return
 
     document = converter.convert(file_path=Path(file_path), meta=None)[0]
+    doc_length = len(document.content)
 
     # Add filename to document metadata for downstream filtering
-    # meta_doc = {"content": document.content, "meta": {"filename": file_path.name}}
-    meta_doc = {"content": document.content, "meta": {"filename": file_path.name}}
-    st.write(len(meta_doc['content']))
+    meta_doc = {"content": document.content,
+                "meta": {
+                    "filename": file_path.name,
+                    }
+                }
+
+    st.write(len(document.content))
 
     # Preprocess document: character cleaning, text-splitting into chunks
-    preprocessor = load_preprocessor()
+    preprocessor = load_preprocessor(doc_length)
     processed_docs = preprocessor.process(documents=[meta_doc])
 
     # Write documents to the document store and update embeddings
